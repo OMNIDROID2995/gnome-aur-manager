@@ -1,0 +1,23 @@
+# AUR build artifacts
+*.tar.gz
+*.tar.xz
+*.tar.zst
+*.pkg.tar.xz
+*.pkg.tar.zst
+pkg/
+src/
+
+# Build directories
+build/
+builddir/
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
