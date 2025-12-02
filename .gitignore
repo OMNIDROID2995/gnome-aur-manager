@@ -1,0 +1,9 @@
+# Build artifacts
+*.pkg.tar.zst
+*.tar.gz
+pkg/
+src/__pycache__/
+__pycache__/
+
+# AUR metadata (managed separately in AUR repo)
+.SRCINFO

@@ -1,0 +1,17 @@
+Con gnome-aur-manager puoi cercare pacchetti/applicazioni dall'AUR (Arch User Repository), compilarli sul tuo sistema, installarli e disinstallarli.
+
+IMPORTANTE: Nell'AUR chiunque può pubblicare applicazioni. Ciò significa anche che queste applicazioni possono essere verificate da chiunque, tuttavia l'installazione di questi pacchetti avviene a proprio rischio e pericolo. Con un manutentore molto conosciuto e pacchetti molto utilizzati generalmente non c'è pericolo.
+
+Tuttavia, consigliamo di installare gnome-software-packagekit-plugin-appstream-git tramite questo strumento per poter utilizzare i repository ufficiali di Arch in GNOME Software Center (se non è già installato).
+
+Così potrai scegliere sotto il pulsante "Installa" se desideri installare la variante Flatpak dell'applicazione o la variante dell'applicazione dal repository ufficiale di Arch.
+
+Se dai valore alla velocità e all'integrazione, generalmente consigliamo la variante dell'applicazione dal repository ufficiale di Arch.
+
+Se dai valore a una sicurezza estremamente elevata e puoi accettare una peggiore integrazione, consigliamo la variante Flatpak dell'applicazione.
+
+Se cerchi velocità e integrazione, ma trovi solo una variante Flatpak dell'applicazione, vale davvero la pena dare un'occhiata all'AUR.
+
+Se non trovi l'applicazione desiderata né qui in GNOME Arch User Repository Manager né nei repository ufficiali core, extra e multilib di Arch, generalmente ti rimangono solo la variante Flatpak dell'applicazione o un'installazione manuale da un'altra fonte esterna.
+
+Le applicazioni AUR devono spesso essere compilate sul tuo sistema. Sebbene ci siano molti pacchetti binari che quasi sempre terminano con -bin (in casi eccezionali ci sono anche pacchetti binari senza -bin nel nome del pacchetto), è sempre importante che la compilazione/installazione di queste applicazioni avvenga in un TERMINALE per poter identificare eventuali errori. Ti verranno inoltre spesso poste domande, alle quali devi rispondere con Sì/Yes, No/No e premendo Return. Rimani al terminale durante l'installazione il più possibile.

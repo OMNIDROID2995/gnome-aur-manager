@@ -1,0 +1,17 @@
+With gnome-aur-manager you can search for packages/apps from the AUR (Arch User Repository), build them on your system, install and uninstall them.
+
+IMPORTANT: In the AUR, apps can be published by anyone. This also means that these apps can be reviewed by anyone, however the installation of these packages is at your own risk. With a very well-known maintainer and widely used packages, there is usually no danger.
+
+However, we recommend installing gnome-software-packagekit-plugin-appstream-git via this tool to be able to use the official Arch repositories in GNOME Software Center (if not already installed).
+
+This way you can choose under the "Install" button whether you want to install the Flatpak app variant or the app variant from the official Arch repository.
+
+If you value speed and integration, we generally recommend the app variant from the official Arch repository.
+
+If you value extremely high security and can accept poorer integration, we recommend the Flatpak app variant.
+
+If you are looking for speed and integration but only find a Flatpak app variant, it is actually worth taking a look at the AUR.
+
+If you can't find the desired app either here in GNOME Arch User Repository Manager or in the official core, extra and multilib repositories of Arch, you are usually left with only the Flatpak app variant or sideloading from another external source.
+
+AUR apps often need to be built on your system. While there are many binary packages that almost always end in -bin (in exceptional cases there are also binary packages without -bin in the package name), it is always important that the building/installation of these apps takes place in a TERMINAL to be able to identify possible errors. You will also often be asked questions to which you must respond with Yes/Yes, No/No and a press of Return. Stay at the terminal during installation as much as possible.

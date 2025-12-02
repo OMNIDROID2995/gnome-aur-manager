@@ -1,0 +1,17 @@
+Con gnome-aur-manager puedes buscar paquetes/aplicaciones del AUR (Arch User Repository), compilarlos en tu sistema, instalarlos y desinstalarlos.
+
+IMPORTANTE: En el AUR cualquiera puede publicar aplicaciones. Esto significa que estas aplicaciones también pueden ser revisadas por cualquiera, sin embargo la instalación de estos paquetes se realiza bajo tu propia responsabilidad. Con un mantenedor muy conocido y paquetes muy utilizados generalmente no hay peligro.
+
+Sin embargo, recomendamos instalar gnome-software-packagekit-plugin-appstream-git a través de esta herramienta para poder utilizar los repositorios oficiales de Arch en GNOME Software Center (si no está instalado ya).
+
+Así podrás elegir bajo el botón "Instalar" si deseas instalar la variante Flatpak de la aplicación o la variante de la aplicación del repositorio oficial de Arch.
+
+Si valoras la velocidad y la integración, generalmente recomendamos la variante de la aplicación del repositorio oficial de Arch.
+
+Si valoras una seguridad extremadamente alta y puedes aceptar una peor integración, recomendamos la variante Flatpak de la aplicación.
+
+Si buscas velocidad e integración, pero solo encuentras una variante Flatpak de la aplicación, realmente vale la pena echar un vistazo al AUR.
+
+Si no encuentras la aplicación deseada ni aquí en GNOME Arch User Repository Manager ni en los repositorios oficiales core, extra y multilib de Arch, generalmente solo te quedan la variante Flatpak de la aplicación o una instalación manual desde otra fuente externa.
+
+Las aplicaciones AUR a menudo deben compilarse en tu sistema. Aunque hay muchos paquetes binarios que casi siempre terminan en -bin (en casos excepcionales también hay paquetes binarios sin -bin en el nombre del paquete), siempre es importante que la compilación/instalación de estas aplicaciones tenga lugar en una TERMINAL para poder identificar posibles errores. También se te harán preguntas frecuentemente, a las que debes responder con Sí/Yes, No/No y presionando Return. Permanece en la terminal durante la instalación en la medida de lo posible.

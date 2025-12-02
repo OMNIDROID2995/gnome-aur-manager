@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=GNOME AUR Manager
+Comment=Browse and manage AUR packages
+Exec=gnome-aur-manager
+Icon=gnome-aur-manager
+Categories=Utility;System;PackageManager;
+Terminal=false
+StartupNotify=true
+StartupWMClass=org.gnome.AURManager

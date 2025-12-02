@@ -1,0 +1,17 @@
+Avec gnome-aur-manager, vous pouvez rechercher des paquets/applications de l'AUR (Arch User Repository), les compiler sur votre système, les installer et les désinstaller.
+
+IMPORTANT : Dans l'AUR, n'importe qui peut publier des applications. Cela signifie également que ces applications peuvent être vérifiées par n'importe qui, cependant l'installation de ces paquets se fait à vos propres risques. Avec un mainteneur très connu et des paquets très utilisés, il n'y a généralement pas de danger.
+
+Cependant, nous recommandons d'installer gnome-software-packagekit-plugin-appstream-git via cet outil pour pouvoir utiliser les dépôts officiels d'Arch dans GNOME Software Center (s'il n'est pas déjà installé).
+
+Ainsi, vous pourrez choisir sous le bouton "Installer" si vous souhaitez installer la variante Flatpak de l'application ou la variante de l'application du dépôt officiel d'Arch.
+
+Si vous accordez de l'importance à la vitesse et à l'intégration, nous recommandons généralement la variante de l'application du dépôt officiel d'Arch.
+
+Si vous accordez de l'importance à une sécurité extrêmement élevée et pouvez accepter une moins bonne intégration, nous recommandons la variante Flatpak de l'application.
+
+Si vous recherchez la vitesse et l'intégration, mais ne trouvez qu'une variante Flatpak de l'application, il vaut vraiment la peine de jeter un coup d'œil à l'AUR.
+
+Si vous ne trouvez l'application souhaitée ni ici dans GNOME Arch User Repository Manager ni dans les dépôts officiels core, extra et multilib d'Arch, il ne vous reste généralement que la variante Flatpak de l'application ou une installation manuelle depuis une autre source externe.
+
+Les applications AUR doivent souvent être compilées sur votre système. Bien qu'il existe de nombreux paquets binaires qui se terminent presque toujours par -bin (dans des cas exceptionnels, il existe également des paquets binaires sans -bin dans le nom du paquet), il est toujours important que la compilation/installation de ces applications ait lieu dans un TERMINAL pour pouvoir identifier d'éventuelles erreurs. On vous posera également souvent des questions, auxquelles vous devez répondre par Oui/Yes, Non/No et en appuyant sur Return. Restez au terminal pendant l'installation autant que possible.

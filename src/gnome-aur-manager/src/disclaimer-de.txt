@@ -1,0 +1,17 @@
+Mit gnome-aur-manager kannst du Pakete/Apps aus dem AUR (Arch User Repository) suchen, auf deinem System bauen, installieren und auch wieder deinstallieren.
+
+WICHTIG!: Im AUR können Apps von jedem veröffentlicht werden. Das bedeutet zwar auch dass diese Apps von jedem überprüft werden können, jedoch erfolgt die Installation dieser Pakete auf eigene Gefahr. Bei einem sehr bekannten Maintainer und viel genutzen Paketen besteht aber in der Regel keine Gefahr.
+
+Wir empfehlen aber gnome-software-packagekit-plugin-appstream-git über dieses Tool zu installieren, um die offiziellen Repositories von Arch im GNOME Software Center nutzen zu können (Wenn nicht schon installiert).
+
+So können sie dort unter dem "Installieren" Button auswählen, ob sie die Flatpak App Variante, oder die App Variante aus dem offiziellen Arch Repository installieren wollen.
+
+Wenn sie wert auf Geschwindigkeit und Integration legen, empfehlen wir ihnen grundsätzlich die App Variante aus dem offiziellen Arch Repository.
+
+Wenn sie Wert auf enorm hohe Sicherheit legen und eine schlechtere Integration akzeptieren können, empfehlen wir die Flatpak App Variante.
+
+Wenn sie auf Geschwindigkeit und Integration aus sind, aber nur eine Flatpak App Variante finden, empfiehlt es sich tatsächlich einen Blick ins AUR zu werfen.
+
+Wenn sie weder hier im GNOME Arch User Repository Manager, noch in den offiziellen core, extra und multilib Repositories von Arch die gewünschte App finden, bleibt ihnen meist nur die Flatpak App Variante oder ein Sideloading von einer anderen externen Quelle.
+
+AUR Apps müssen oft auf ihrem System gebaut werden. Es gibt zwar viele Binärpakete welche fast immer mit -bin enden (In Ausnahmefällen gibt es auch Binärpakete ohne -bin im Paketnamen), jedoch ist immer wichtig dass das Bauen/Installieren dieser Apps in einem TERMINAL statt findet, um eventuelle Fehler identifizieren zu können. Auch werden ihnen oft Fragen gestellt, auf welche sie mit Ja/Yes, Nein/No und einem Tastendruck auf Return reagieren müssen. Bleiben sie während der Installation möglichst am Terminal.
