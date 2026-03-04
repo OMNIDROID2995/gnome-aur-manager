@@ -55,10 +55,6 @@ STRING_DETAIL_DESCRIPTION=Descripción
 STRING_DETAIL_LICENSES=Licencias
 STRING_DETAIL_GROUPS=Grupos
 STRING_DETAIL_URL=URL
-STRING_UPDATING_AUR=⬆Actualizando todos los paquetes AUR...
-STRING_UPDATE_COMPLETE=Paquetes AUR actualizados
-STRING_CLOSE_TERMINAL=Puedes cerrar el terminal ahora
-STRING_ERROR_PREFIX=Error:
 STRING_PACKAGEKIT_TITLE=Mejora Opcional Disponible
 STRING_PACKAGEKIT_MESSAGE=Para una mejor integración con el Centro de Software de GNOME, recomendamos instalar el paquete opcional: gnome-software-packagekit-plugin-appstream-git
 
@@ -66,3 +62,14 @@ Esto proporciona una integración AppStream mejorada para una mejor experiencia.
 STRING_PACKAGEKIT_INSTALL=Instalar ahora
 STRING_PACKAGEKIT_SKIP=Omitir
 STRING_PACKAGEKIT_INSTALLING=Instalando mejora de PackageKit...
+
+STRING_APPSTREAM_INSTALL_BUTTON=Instalar integración AppStream PackageKit
+STRING_APPSTREAM_INSTALL_SUBTITLE=Instala adw-gtk-theme y gnome-software-packagekit-plugin-appstream-git con todas las dependencias
+STRING_APPSTREAM_ALREADY_INSTALLED=AppStream PackageKit ya está instalado ✓
+STRING_APPSTREAM_INSTALLING=Instalando integración AppStream...
+STRING_APPSTREAM_INSTALL_SUCCESS=¡Integración AppStream instalada exitosamente!
+STRING_APPSTREAM_INSTALL_FAILED=La instalación falló - Por favor intenta manualmente a través del terminal
+STRING_RETRY_TITLE=La instalación automática falló
+STRING_RETRY_MESSAGE=La instalación automática ha fallado. ¿Deseas reintentar en modo interactivo?
+STRING_RETRY_BUTTON=Reintentar interactivamente
+STRING_RETRY_CANCEL=Cancelar

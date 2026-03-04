@@ -62,3 +62,14 @@ Questo fornisce un'integrazione AppStream migliorata per un'esperienza migliore.
 STRING_PACKAGEKIT_INSTALL=Installa ora
 STRING_PACKAGEKIT_SKIP=Salta
 STRING_PACKAGEKIT_INSTALLING=Installazione miglioramento PackageKit...
+
+STRING_APPSTREAM_INSTALL_BUTTON=Installa integrazione AppStream PackageKit
+STRING_APPSTREAM_INSTALL_SUBTITLE=Installa adw-gtk-theme e gnome-software-packagekit-plugin-appstream-git con tutte le dipendenze
+STRING_APPSTREAM_ALREADY_INSTALLED=AppStream PackageKit è già installato ✓
+STRING_APPSTREAM_INSTALLING=Installazione integrazione AppStream...
+STRING_APPSTREAM_INSTALL_SUCCESS=Integrazione AppStream installata con successo!
+STRING_APPSTREAM_INSTALL_FAILED=Installazione fallita - Prova manualmente tramite terminale
+STRING_RETRY_TITLE=Installazione automatica fallita
+STRING_RETRY_MESSAGE=L'installazione automatica è fallita. Vuoi riprovare in modalità interattiva?
+STRING_RETRY_BUTTON=Riprova interattivamente
+STRING_RETRY_CANCEL=Annulla

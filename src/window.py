@@ -1,93 +1,75 @@
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
-from gi.repository import Gtk, Adw, GLib, Gio
+gi.require_version('Vte', '3.91')
+from gi.repository import Gtk, Adw, GLib, Vte
 import subprocess
 import threading
 import webbrowser
 import os
 import json
-import time
 import locale
-from pathlib import Path
 
 
-# Global variables
+# --- Global translation state ---
+
 STRINGS = {}
 CURRENT_LANGUAGE = None
 
 
 def load_translations(language=None):
-    """Load translations from language-specific .t                    'yay -Sc; echo ""; echo -e "\\033[32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m"; echo -e "\\033[32mCache geleert - Du kannst das Terminal jetzt schließen!\\033[0m"; echo -e"\\033[32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m"; echo ""'xt files."""
+    """Load translations from language-specific text files.
+    Priority: debug override > LANG env > system locale > English fallback."""
     global STRINGS, CURRENT_LANGUAGE
-    
+
     if language is None:
-        # First priority: Debug language override from command line
+        # Debug language override from command line
         try:
             import sys
-            if hasattr(sys.modules['__main__'], 'DEBUG_LANGUAGE'):
-                debug_lang = sys.modules['__main__'].DEBUG_LANGUAGE
-                if debug_lang:
-                    language = debug_lang
-                    print(f"Debug: Using language override - {language}")
-                else:
-                    raise Exception("No debug language set")
-            else:
-                raise Exception("No debug language available")
+            language = getattr(sys.modules.get('__main__'), 'DEBUG_LANGUAGE', None)
+            if language:
+                print(f"Debug: Using language override - {language}")
         except:
-            # Second priority: GNOME GUI language setting
-            try:
-                # Language detection via LANG environment variable
-                lang_env = os.environ.get("LANG", "")
-                if lang_env and lang_env != "":
-                    language = lang_env.split('_')[0].lower()
-                else:
-                    raise Exception("No GUI locale set")
-            except:
-                # Third priority: System locale
+            pass
+
+        if not language:
+            lang_env = os.environ.get("LANG", "")
+            if lang_env:
+                language = lang_env.split('_')[0].lower()
+            else:
                 try:
-                    locale_str = locale.getlocale()[0]
-                    if locale_str:
-                        language = locale_str.split('_')[0].lower()
-                    else:
-                        language = 'en'
+                    loc = locale.getlocale()[0]
+                    language = loc.split('_')[0].lower() if loc else 'en'
                 except:
                     language = 'en'
-    
-    supported_languages = ['de', 'en', 'es', 'fr', 'it']
-    if language not in supported_languages:
+
+    if language not in ('de', 'en', 'es', 'fr', 'it'):
         language = 'en'
-    
+
     CURRENT_LANGUAGE = language
-    
-    strings_dict = {}
-    try:
-        strings_dir = os.path.join(os.path.dirname(__file__), 'strings')
-        strings_file = os.path.join(strings_dir, f'{language}.txt')
-        
-        if os.path.exists(strings_file):
-            with open(strings_file, 'r', encoding='utf-8') as f:
+    strings_dir = os.path.join(os.path.dirname(__file__), 'strings')
+
+    candidates = [language] if language == 'en' else [language, 'en']
+    for lang_code in candidates:
+        path = os.path.join(strings_dir, f'{lang_code}.txt')
+        if not os.path.exists(path):
+            continue
+        try:
+            strings_dict = {}
+            with open(path, 'r', encoding='utf-8') as f:
                 for line in f:
                     line = line.strip()
                     if line and '=' in line and not line.startswith('#'):
                         key, value = line.split('=', 1)
                         strings_dict[key] = value
-        else:
-            if language != 'en':
-                fallback_file = os.path.join(strings_dir, 'en.txt')
-                if os.path.exists(fallback_file):
-                    with open(fallback_file, 'r', encoding='utf-8') as f:
-                        for line in f:
-                            line = line.strip()
-                            if line and '=' in line and not line.startswith('#'):
-                                key, value = line.split('=', 1)
-                                strings_dict[key] = value
-    except Exception as e:
-        print(f"Error loading translations: {e}")
-    
+            STRINGS.clear()
+            STRINGS.update(strings_dict)
+            return strings_dict
+        except Exception as e:
+            print(f"Error loading translations: {e}")
+
     STRINGS.clear()
-    STRINGS.update(strings_dict)
-    return strings_dict
+    return {}
 
 
 def _(key, **kwargs):
@@ -98,337 +80,352 @@ def _(key, **kwargs):
     return text
 
 
+# --- Terminal notification helpers ---
+
+def _terminal_box(lines, color_code):
+    """Generate a colored ASCII notification box for the embedded terminal."""
+    parts = [
+        '\necho ""', 'echo ""',
+        f'echo -e "\\033[1;{color_code}m╔════════════════════════════════════════════════════════╗\\033[0m"',
+        f'echo -e "\\033[1;{color_code}m║                                                        ║\\033[0m"'
+    ]
+    for line in lines:
+        parts.append(f'echo -e "\\033[1;{color_code}m║  {line:^52}  ║\\033[0m"')
+    parts.extend([
+        f'echo -e "\\033[1;{color_code}m║                                                        ║\\033[0m"',
+        f'echo -e "\\033[1;{color_code}m╚════════════════════════════════════════════════════════╝\\033[0m"',
+        'echo ""'
+    ])
+    return '\n'.join(parts) + '\n'
+
+
 def get_terminal_notification(success=True, operation='install'):
-    """Generate terminal notification box with translated messages."""
-    # Get current language
+    """Generate terminal notification with translated messages."""
     lang = CURRENT_LANGUAGE or 'en'
-    
-    # Messages for success
-    success_messages = {
-        'de': 'FERTIG! Du kannst das Terminal jetzt schließen',
-        'en': 'DONE! You can close the terminal now',
-        'es': '¡HECHO! Puedes cerrar el terminal ahora',
-        'fr': 'TERMINÉ! Vous pouvez fermer le terminal maintenant',
-        'it': 'FATTO! Puoi chiudere il terminale adesso'
-    }
-    
-    # Error messages with operation context
-    error_messages = {
-        'install': {
-            'de': ('FEHLER! Installation fehlgeschlagen', 'Bitte den Output oben überprüfen'),
-            'en': ('ERROR! Installation failed', 'Please check the output above'),
-            'es': ('¡ERROR! La instalación falló', 'Por favor verifica el resultado anterior'),
-            'fr': ("ERREUR! L'installation a échoué", 'Veuillez vérifier le résultat ci-dessus'),
-            'it': ("ERRORE! L'installazione è fallita", 'Verifica il risultato sopra')
-        },
-        'uninstall': {
-            'de': ('FEHLER! Deinstallation fehlgeschlagen', 'Bitte den Output oben überprüfen'),
-            'en': ('ERROR! Uninstallation failed', 'Please check the output above'),
-            'es': ('¡ERROR! La desinstalación falló', 'Por favor verifica el resultado anterior'),
-            'fr': ('ERREUR! La désinstallation a échoué', 'Veuillez vérifier le résultat ci-dessus'),
-            'it': ('ERRORE! La disinstallazione è fallita', 'Verifica il risultato sopra')
-        },
-        'update': {
-            'de': ('FEHLER! Update fehlgeschlagen', 'Bitte den Output oben überprüfen'),
-            'en': ('ERROR! Update failed', 'Please check the output above'),
-            'es': ('¡ERROR! La actualización falló', 'Por favor verifica el resultado anterior'),
-            'fr': ('ERREUR! La mise à jour a échoué', 'Veuillez vérifier le résultat ci-dessus'),
-            'it': ("ERRORE! L'aggiornamento è fallito", 'Verifica il risultato sopra')
-        },
-        'cleanup': {
-            'de': ('FEHLER! Cache-Bereinigung fehlgeschlagen', 'Bitte den Output oben überprüfen'),
-            'en': ('ERROR! Cache cleanup failed', 'Please check the output above'),
-            'es': ('¡ERROR! La limpieza de caché falló', 'Por favor verifica el resultado anterior'),
-            'fr': ('ERREUR! Le nettoyage du cache a échoué', 'Veuillez vérifier le résultat ci-dessus'),
-            'it': ('ERRORE! La pulizia della cache è fallita', 'Verifica il risultato sopra')
-        }
-    }
-    
-    color = '32' if success else '31'  # Green for success, red for error
-    
+
     if success:
-        message = success_messages.get(lang, success_messages['en'])
-        return f'''
-echo ""
-echo ""
-echo -e "\\033[1;{color}m╔════════════════════════════════════════════════════════╗\\033[0m"
-echo -e "\\033[1;{color}m║                                                        ║\\033[0m"
-echo -e "\\033[1;{color}m║  {message:^52}  ║\\033[0m"
-echo -e "\\033[1;{color}m║                                                        ║\\033[0m"
-echo -e "\\033[1;{color}m╚════════════════════════════════════════════════════════╝\\033[0m"
-echo ""
-'''
-    else:
-        error_data = error_messages.get(operation, error_messages['install'])
-        line1, line2 = error_data.get(lang, error_data['en'])
-        return f'''
-echo ""
-echo ""
-echo -e "\\033[1;{color}m╔════════════════════════════════════════════════════════╗\\033[0m"
-echo -e "\\033[1;{color}m║                                                        ║\\033[0m"
-echo -e "\\033[1;{color}m║  {line1:^52}  ║\\033[0m"
-echo -e "\\033[1;{color}m║  {line2:^52}  ║\\033[0m"
-echo -e "\\033[1;{color}m║                                                        ║\\033[0m"
-echo -e "\\033[1;{color}m╚════════════════════════════════════════════════════════╝\\033[0m"
-echo ""
-'''
+        msgs = {
+            'de': 'FERTIG! Du kannst das Terminal jetzt schließen',
+            'en': 'DONE! You can close the terminal now',
+            'es': '¡HECHO! Puedes cerrar el terminal ahora',
+            'fr': 'TERMINÉ! Vous pouvez fermer le terminal maintenant',
+            'it': 'FATTO! Puoi chiudere il terminale adesso'
+        }
+        return _terminal_box([msgs.get(lang, msgs['en'])], '32')
+
+    # Operation names per language
+    op_names = {
+        'install':   {'de': 'Installation', 'en': 'Installation', 'es': 'instalación',
+                      'fr': "installation", 'it': "installazione"},
+        'uninstall': {'de': 'Deinstallation', 'en': 'Uninstallation', 'es': 'desinstalación',
+                      'fr': 'désinstallation', 'it': 'disinstallazione'},
+        'update':    {'de': 'Update', 'en': 'Update', 'es': 'actualización',
+                      'fr': 'mise à jour', 'it': 'aggiornamento'},
+        'cleanup':   {'de': 'Cache-Bereinigung', 'en': 'Cache cleanup', 'es': 'limpieza de caché',
+                      'fr': 'nettoyage du cache', 'it': 'pulizia della cache'},
+    }
+    check_msgs = {
+        'de': 'Bitte den Output oben überprüfen',
+        'en': 'Please check the output above',
+        'es': 'Por favor verifica el resultado anterior',
+        'fr': 'Veuillez vérifier le résultat ci-dessus',
+        'it': 'Verifica il risultato sopra'
+    }
+
+    op = op_names.get(operation, op_names['install'])
+    name = op.get(lang, op['en'])
+
+    error_lines = {
+        'de': f'FEHLER! {name} fehlgeschlagen',
+        'en': f'ERROR! {name} failed',
+        'es': f'¡ERROR! La {name} falló',
+        'fr': f"ERREUR! L'{name} a échoué",
+        'it': f"ERRORE! L'{name} è fallita"
+    }
+
+    return _terminal_box([
+        error_lines.get(lang, error_lines['en']),
+        check_msgs.get(lang, check_msgs['en'])
+    ], '31')
 
 
-class DisclaimerDialog(Gtk.Dialog):
-    def __init__(self, parent, accent_hex):
+# --- Disclaimer Dialog ---
+
+class DisclaimerDialog(Adw.Window):
+    def __init__(self, parent):
         super().__init__(transient_for=parent, modal=True)
-        
+
         lang = CURRENT_LANGUAGE or 'en'
-        
         title_map = {
-            'de': 'Warnung',
-            'en': 'Warning',
-            'es': 'Advertencia',
-            'fr': 'Avertissement',
-            'it': 'Avvertenza'
+            'de': 'Warnung', 'en': 'Warning', 'es': 'Advertencia',
+            'fr': 'Avertissement', 'it': 'Avvertenza'
         }
         self.set_title(title_map.get(lang, 'Warning'))
-        self.set_default_size(1000, 650)
-        self.accent_hex = accent_hex
+        self.set_default_size(900, -1)
         self.dialog_accepted = False
-        
-        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
-        vbox.set_margin_top(20)
-        vbox.set_margin_bottom(20)
-        vbox.set_margin_start(20)
-        vbox.set_margin_end(20)
-        
-        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
-        
+
+        # Adwaita ToolbarView with HeaderBar
+        toolbar_view = Adw.ToolbarView()
+        toolbar_view.add_top_bar(Adw.HeaderBar())
+
+        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        main_box.set_margin_top(16)
+        main_box.set_margin_bottom(16)
+        main_box.set_margin_start(20)
+        main_box.set_margin_end(20)
+
+        # Warning title
         title = Gtk.Label(label=STRINGS.get('STRING_DISCLAIMER_TITLE', '⚠️ ACHTUNG'))
         title.add_css_class("title-2")
-        content.append(title)
-        
-        disclaimer_text = "Please accept the disclaimer to continue."
-        try:
-            disclaimer_file = os.path.join(os.path.dirname(__file__), f'disclaimer-{lang}.txt')
-            if not os.path.exists(disclaimer_file):
-                disclaimer_file = os.path.join(os.path.dirname(__file__), 'disclaimer-en.txt')
-            
-            if os.path.exists(disclaimer_file):
-                with open(disclaimer_file, 'r', encoding='utf-8') as f:
-                    disclaimer_text = f.read().strip()
-        except:
-            pass
-        
-        desc = Gtk.Label(label=disclaimer_text)
+        main_box.append(title)
+
+        # Disclaimer text
+        desc = Gtk.Label(label=self._load_disclaimer_text(lang))
         desc.set_wrap(True)
         desc.set_wrap_mode(Gtk.WrapMode.WORD)
         desc.set_halign(Gtk.Align.START)
         desc.set_justify(Gtk.Justification.LEFT)
         desc.set_hexpand(True)
-        content.append(desc)
-        
+        main_box.append(desc)
+
+        # Native Adwaita SwitchRows
+        prefs_group = Adw.PreferencesGroup()
+        self.switch_row1 = Adw.SwitchRow(title=STRINGS.get('STRING_UNDERSTAND', 'I understand'))
+        prefs_group.add(self.switch_row1)
+        self.switch_row2 = Adw.SwitchRow(title=STRINGS.get('STRING_DONT_SHOW_AGAIN', 'Do not show this message again'))
+        prefs_group.add(self.switch_row2)
+        main_box.append(prefs_group)
+
+        # AppStream PackageKit install group
+        appstream_group = Adw.PreferencesGroup()
+        if self._is_appstream_installed():
+            row = Adw.ActionRow(
+                title=STRINGS.get('STRING_APPSTREAM_ALREADY_INSTALLED',
+                                  'AppStream PackageKit is already installed ✓'))
+            row.set_sensitive(False)
+            appstream_group.add(row)
+        else:
+            self.appstream_row = Adw.ActionRow(
+                title=STRINGS.get('STRING_APPSTREAM_INSTALL_BUTTON',
+                                  'Install AppStream PackageKit Integration'),
+                subtitle=STRINGS.get('STRING_APPSTREAM_INSTALL_SUBTITLE',
+                                     'Installs adw-gtk-theme and gnome-software-packagekit-plugin-appstream-git with all dependencies'))
+            self.appstream_install_btn = Gtk.Button(
+                label=STRINGS.get('STRING_PACKAGEKIT_INSTALL', 'Install Now'))
+            self.appstream_install_btn.add_css_class("suggested-action")
+            self.appstream_install_btn.set_valign(Gtk.Align.CENTER)
+            self.appstream_install_btn.connect("clicked", self.on_appstream_install_clicked)
+            self.appstream_row.add_suffix(self.appstream_install_btn)
+            self.appstream_row.set_activatable_widget(self.appstream_install_btn)
+            appstream_group.add(self.appstream_row)
+        main_box.append(appstream_group)
+
+        # Accept button
+        accept_btn = Gtk.Button(label=STRINGS.get('STRING_ACCEPT_BUTTON', 'Akzeptieren'))
+        accept_btn.add_css_class("suggested-action")
+        accept_btn.add_css_class("pill")
+        accept_btn.set_halign(Gtk.Align.CENTER)
+        accept_btn.connect("clicked", self.on_accept_clicked)
+        main_box.append(accept_btn)
+
+        toolbar_view.set_content(main_box)
+        self.set_content(toolbar_view)
         self.connect("close-request", self.on_dialog_close_request)
-        
-        switch_box1 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        label1 = Gtk.Label(label=STRINGS.get('STRING_UNDERSTAND', 'I understand'))
-        label1.set_halign(Gtk.Align.START)
-        label1.set_hexpand(True)
-        self.switch1 = Gtk.Switch()
-        switch_box1.append(label1)
-        switch_box1.append(self.switch1)
-        
-        box1_button = Gtk.Button()
-        box1_button.set_child(switch_box1)
-        box1_button.add_css_class("flat")
-        box1_button.set_hexpand(True)
-        box1_button.connect("clicked", lambda b: self.switch1.set_active(not self.switch1.get_active()))
-        
-        switch_box2 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        label2 = Gtk.Label(label=STRINGS.get('STRING_DONT_SHOW_AGAIN', 'Do not show this message again'))
-        label2.set_halign(Gtk.Align.START)
-        label2.set_hexpand(True)
-        self.switch2 = Gtk.Switch()
-        switch_box2.append(label2)
-        switch_box2.append(self.switch2)
-        
-        box2_button = Gtk.Button()
-        box2_button.set_child(switch_box2)
-        box2_button.add_css_class("flat")
-        box2_button.set_hexpand(True)
-        box2_button.connect("clicked", lambda b: self.switch2.set_active(not self.switch2.get_active()))
-        
-        switches_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
-        switches_box.append(box1_button)
-        switches_box.append(box2_button)
-        
-        content.append(switches_box)
-        vbox.append(content)
-        
-        self.accept_button = self.add_button(STRINGS.get('STRING_ACCEPT_BUTTON', 'Akzeptieren'), Gtk.ResponseType.OK)
-        self.accept_button.set_margin_top(12)
-        self.accept_button.set_margin_bottom(12)
-        self.accept_button.set_margin_start(12)
-        self.accept_button.set_margin_end(12)
-        self.accept_button.add_css_class("accent-colored")
-        
-        self.setup_dialog_css()
-        
-        content_area = self.get_content_area()
-        content_area.append(vbox)
-        self.connect("response", self.on_response)
-    
-    def setup_dialog_css(self):
-        """Setup CSS for switches and button with accent color"""
-        css_provider = Gtk.CssProvider()
-        css_data = f"""
-        switch {{
-            background-color: #888;
-            border-radius: 10px;
-            margin: 6px;
-        }}
-        
-        switch:checked {{
-            background-color: {self.accent_hex};
-        }}
-        
-        switch slider {{
-            background-color: white;
-            border-radius: 50%;
-            margin: 2px;
-        }}
-        
-        .accent-colored {{
-            background: {self.accent_hex};
-            color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 8px 16px;
-            font-weight: 500;
-        }}
-        
-        .accent-colored:hover {{
-            background: {self.lighten_color(self.accent_hex)};
-        }}
-        """
-        css_provider.load_from_data(css_data)
-        for switch in [self.switch1, self.switch2]:
-            switch.get_style_context().add_provider(css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-        
-        if hasattr(self, 'accept_button'):
-            self.accept_button.get_style_context().add_provider(css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-    
+
     @staticmethod
-    def lighten_color(hex_color):
-        """Lighten a hex color by 15%"""
-        hex_color = hex_color.lstrip('#')
-        rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-        lighter = tuple(int(min(255, c * 1.15)) for c in rgb)
-        return '#{:02x}{:02x}{:02x}'.format(*lighter)
-    
+    def _load_disclaimer_text(lang):
+        """Load disclaimer text for the given language with English fallback."""
+        for code in (lang, 'en'):
+            path = os.path.join(os.path.dirname(__file__), f'disclaimer-{code}.txt')
+            if os.path.exists(path):
+                try:
+                    with open(path, 'r', encoding='utf-8') as f:
+                        return f.read().strip()
+                except:
+                    continue
+        return "Please accept the disclaimer to continue."
+
     def on_dialog_close_request(self, dialog):
-        """Exit app if dialog is closed with X button without accepting"""
+        """Exit app if dialog is closed without accepting."""
         if not self.dialog_accepted:
             import sys
             sys.exit(0)
         return False
-    
-    def on_response(self, dialog, response_id):
-        if response_id == Gtk.ResponseType.OK:
-            if self.switch1.get_active():
-                self.dialog_accepted = True
-                if self.switch2.get_active():
-                    self.save_preference()
-                self.close()
-            else:
-                error_dialog = Gtk.AlertDialog()
-                error_dialog.set_message(STRINGS.get('STRING_CONFIRM_UNDERSTAND', 'Bitte bestätigen Sie, dass Sie verstanden haben'))
-                error_dialog.show(self)
-    
-    def save_preference(self):
+
+    def on_accept_clicked(self, button):
+        if self.switch_row1.get_active():
+            self.dialog_accepted = True
+            if self.switch_row2.get_active():
+                self._save_preference()
+            self.close()
+        else:
+            dialog = Adw.AlertDialog()
+            dialog.set_heading(STRINGS.get('STRING_CONFIRM_UNDERSTAND',
+                                           'Bitte bestätigen Sie, dass Sie verstanden haben'))
+            dialog.add_response("ok", "OK")
+            dialog.present(self)
+
+    @staticmethod
+    def _is_appstream_installed():
+        """Check if gnome-software-packagekit-plugin-appstream-git is installed."""
+        try:
+            return subprocess.run(
+                ['pacman', '-Q', 'gnome-software-packagekit-plugin-appstream-git'],
+                capture_output=True, timeout=5
+            ).returncode == 0
+        except:
+            return False
+
+    def on_appstream_install_clicked(self, button):
+        """Launch fully automatic AppStream PackageKit installation in kgx terminal."""
+        self.appstream_install_btn.set_sensitive(False)
+        self.appstream_install_btn.set_label(
+            STRINGS.get('STRING_APPSTREAM_INSTALLING', 'Installing AppStream integration...'))
+        threading.Thread(target=self._run_appstream_install, daemon=True).start()
+
+    def _run_appstream_install(self):
+        """Run the full automatic installation in kgx terminal."""
+        try:
+            import tempfile
+
+            success_msg = get_terminal_notification(success=True, operation='install')
+            error_msg = get_terminal_notification(success=False, operation='install')
+
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
+                script_path = f.name
+                f.write(f'''#!/bin/bash
+echo ""
+echo -e "\\033[1;34m══════════════════════════════════════════════════════════\\033[0m"
+echo -e "\\033[1;34m  AppStream PackageKit Integration - Automatic Setup\\033[0m"
+echo -e "\\033[1;34m══════════════════════════════════════════════════════════\\033[0m"
+echo ""
+
+echo -e "\\033[1;33m[1/2]\\033[0m Installing adw-gtk-theme..."
+echo ""
+yay -S --noconfirm --needed adw-gtk-theme
+STEP1_STATUS=$?
+
+if [ $STEP1_STATUS -ne 0 ]; then
+    echo ""
+    echo -e "\\033[1;31mWarning: adw-gtk-theme installation had issues (may already be installed)\\033[0m"
+    echo ""
+fi
+
+echo ""
+echo -e "\\033[1;33m[2/2]\\033[0m Building & installing gnome-software-packagekit-plugin-appstream-git..."
+echo -e "       This may take several minutes (compiling from source)..."
+echo ""
+yay -S --noconfirm --needed --answerdiff None --answerclean None --removemake gnome-software-packagekit-plugin-appstream-git
+STEP2_STATUS=$?
+
+if [ $STEP2_STATUS -eq 0 ]; then{success_msg}else{error_msg}fi
+''')
+
+            process = subprocess.Popen(['kgx', '--', 'bash', script_path])
+            process.wait()
+
+            try:
+                os.unlink(script_path)
+            except:
+                pass
+
+            installed = self._is_appstream_installed()
+            GLib.idle_add(self._on_appstream_result, installed)
+        except:
+            GLib.idle_add(self._on_appstream_result, False)
+
+    def _on_appstream_result(self, success):
+        """Update UI after AppStream installation attempt."""
+        if success:
+            self.appstream_install_btn.set_label(
+                STRINGS.get('STRING_APPSTREAM_INSTALL_SUCCESS',
+                           'AppStream integration successfully installed!'))
+            self.appstream_row.set_subtitle("")
+        else:
+            self.appstream_install_btn.set_label(
+                STRINGS.get('STRING_APPSTREAM_INSTALL_FAILED',
+                           'Installation failed - Please try manually via terminal'))
+            self.appstream_install_btn.add_css_class("destructive-action")
+        self.appstream_install_btn.remove_css_class("suggested-action")
+        self.appstream_install_btn.set_sensitive(False)
+
+    @staticmethod
+    def _save_preference():
         config_dir = os.path.expanduser("~/.config/gnome-aur-manager")
         os.makedirs(config_dir, exist_ok=True)
-        config_file = os.path.join(config_dir, "disclaimer.json")
-        with open(config_file, 'w') as f:
+        with open(os.path.join(config_dir, "disclaimer.json"), 'w') as f:
             json.dump({"show_disclaimer": False}, f)
-    
+
     @staticmethod
     def should_show():
         config_file = os.path.expanduser("~/.config/gnome-aur-manager/disclaimer.json")
         if os.path.exists(config_file):
             try:
                 with open(config_file, 'r') as f:
-                    config = json.load(f)
-                    return config.get("show_disclaimer", True)
+                    return json.load(f).get("show_disclaimer", True)
             except:
                 return True
         return True
 
 
+# --- Main Window ---
+
 class MainWindow(Gtk.ApplicationWindow):
-    def __init__(self, force_dialog=False):
+    def __init__(self):
         super().__init__()
-        
-        self.force_dialog = force_dialog
-        load_translations()
-        
+
         self.set_title(STRINGS.get('STRING_APP_TITLE', 'GNOME Arch User Repository Manager'))
         self.set_default_size(1000, 700)
-        
+
         header_bar = Adw.HeaderBar()
         self.set_titlebar(header_bar)
+        self._setup_css()
 
-        self.accent_hex = self.get_accent_color_hex()
-        self.setup_base_css()
-        
         main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
         main_box.set_margin_top(0)
         main_box.set_margin_bottom(15)
         main_box.set_margin_start(15)
         main_box.set_margin_end(15)
 
-        header = self.create_header()
-        main_box.append(header)
+        main_box.append(self._create_header())
 
+        # Search row
         search_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.search_entry = Gtk.Entry()
         self.search_entry.set_placeholder_text(STRINGS.get('STRING_SEARCH_PLACEHOLDER', 'Suchbegriff eingeben...'))
         self.search_entry.set_size_request(300, -1)
         self.search_entry.connect("activate", self.on_search)
 
-        search_button = Gtk.Button(label=STRINGS.get('STRING_SEARCH_BUTTON', 'Suchen'))
-        search_button.set_name("search-button")
-        search_button.add_css_class("suggested-action")
-        search_button.connect("clicked", self.on_search)
-        self.style_accent_button(search_button)
+        search_btn = Gtk.Button(label=STRINGS.get('STRING_SEARCH_BUTTON', 'Suchen'))
+        search_btn.add_css_class("suggested-action")
+        search_btn.connect("clicked", self.on_search)
 
         search_box.append(self.search_entry)
-        search_box.append(search_button)
+        search_box.append(search_btn)
         search_box.set_halign(Gtk.Align.START)
         search_box.set_hexpand(True)
 
-        # Buttons für Cache/Update rechtsbündig
-        top_buttons_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        top_buttons_box.set_halign(Gtk.Align.END)
-        
+        # Cache/Update buttons (right-aligned)
+        top_buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        top_buttons.set_halign(Gtk.Align.END)
+
         self.cleanup_button = Gtk.Button(label=STRINGS.get('STRING_CLEAN_CACHE', 'Cache leeren'))
-        self.cleanup_button.set_name("cleanup-button")
         self.cleanup_button.add_css_class("suggested-action")
         self.cleanup_button.connect("clicked", self.on_cleanup_clicked)
-        self.style_accent_button(self.cleanup_button)
-        
+
         self.update_button = Gtk.Button(label=STRINGS.get('STRING_UPDATE_BUTTON', 'Installierte AUR Pakete aktualisieren'))
-        self.update_button.set_name("update-button")
         self.update_button.add_css_class("suggested-action")
         self.update_button.connect("clicked", self.on_update_aur_clicked)
-        self.style_accent_button(self.update_button)
-        
-        top_buttons_box.append(self.cleanup_button)
-        top_buttons_box.append(self.update_button)
-        
-        # Kombiniere Suchbox und Top-Buttons in einer Zeile
-        search_and_buttons_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        search_and_buttons_row.append(search_box)
-        search_and_buttons_row.append(top_buttons_box)
-        
-        main_box.append(search_and_buttons_row)
 
+        top_buttons.append(self.cleanup_button)
+        top_buttons.append(self.update_button)
+
+        search_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        search_row.append(search_box)
+        search_row.append(top_buttons)
+        main_box.append(search_row)
+
+        # Paned: results list | detail panel
         paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
         paned.set_vexpand(True)
         paned.set_hexpand(True)
@@ -446,18 +443,41 @@ class MainWindow(Gtk.ApplicationWindow):
         details_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         details_box.add_css_class("card")
 
+        # Details header with view toggle
         details_header_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         details_header_box.set_halign(Gtk.Align.FILL)
         details_header_box.set_margin_top(12)
         details_header_box.set_margin_start(12)
         details_header_box.set_margin_end(12)
-        
+
         details_header = Gtk.Label(label=STRINGS.get('STRING_DETAILS_HEADER', 'Paketdetails'))
         details_header.add_css_class("title-2")
         details_header.set_halign(Gtk.Align.START)
         details_header.set_hexpand(True)
-        
+
+        view_switcher = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        view_switcher.add_css_class("linked")
+
+        self.details_toggle = Gtk.ToggleButton(label=STRINGS.get('STRING_DETAILS_HEADER', 'Paketdetails'))
+        self.details_toggle.set_active(True)
+        self.details_toggle.connect("toggled", self.on_details_toggle)
+
+        self.terminal_toggle = Gtk.ToggleButton(label="Terminal")
+        self.terminal_toggle.set_active(False)
+        self.terminal_toggle.connect("toggled", self.on_terminal_toggle)
+
+        view_switcher.append(self.details_toggle)
+        view_switcher.append(self.terminal_toggle)
+
         details_header_box.append(details_header)
+        details_header_box.append(view_switcher)
+
+        # Stack: details view + terminal view
+        self.detail_stack = Gtk.Stack()
+        self.detail_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self.detail_stack.set_transition_duration(200)
+        self.detail_stack.set_vexpand(True)
+        self.detail_stack.set_hexpand(True)
 
         scrolled_details = Gtk.ScrolledWindow()
         scrolled_details.set_vexpand(True)
@@ -470,15 +490,35 @@ class MainWindow(Gtk.ApplicationWindow):
         self.details_grid.set_margin_bottom(10)
         self.details_grid.set_margin_start(10)
         self.details_grid.set_margin_end(10)
-        
+
         scrolled_details.set_child(self.details_grid)
-        
+
         self.details_label = Gtk.Label(label=STRINGS.get('STRING_SELECT_PACKAGE', 'Wählen Sie ein Paket aus der Liste'))
         self.details_label.set_wrap(True)
         self.details_label.set_halign(Gtk.Align.START)
         self.details_label.set_valign(Gtk.Align.START)
         self.details_grid.attach(self.details_label, 0, 0, 2, 1)
 
+        self.detail_stack.add_named(scrolled_details, "details")
+
+        # Embedded Vte terminal
+        self.terminal = Vte.Terminal()
+        self.terminal.set_vexpand(True)
+        self.terminal.set_hexpand(True)
+        self.terminal.set_scroll_on_output(True)
+        self.terminal.set_scrollback_lines(10000)
+
+        terminal_scrolled = Gtk.ScrolledWindow()
+        terminal_scrolled.set_vexpand(True)
+        terminal_scrolled.set_hexpand(True)
+        terminal_scrolled.set_child(self.terminal)
+
+        self.detail_stack.add_named(terminal_scrolled, "terminal")
+        self.detail_stack.set_visible_child_name("details")
+        self._terminal_running = False
+        self._terminal_handler_id = None
+
+        # Action buttons
         action_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         action_box.set_margin_top(12)
         action_box.set_margin_bottom(12)
@@ -495,24 +535,18 @@ class MainWindow(Gtk.ApplicationWindow):
         button_row.set_margin_end(12)
 
         self.install_button = Gtk.Button(label=STRINGS.get('STRING_INSTALL_BUTTON', 'Installieren'))
-        self.install_button.set_name("install-button")
         self.install_button.add_css_class("suggested-action")
         self.install_button.connect("clicked", self.on_install_clicked)
         self.install_button.set_sensitive(False)
-        self.style_accent_button(self.install_button)
 
         self.uninstall_button = Gtk.Button(label=STRINGS.get('STRING_UNINSTALL_BUTTON', 'Deinstallieren'))
-        self.uninstall_button.set_name("uninstall-button")
         self.uninstall_button.add_css_class("destructive-action")
         self.uninstall_button.connect("clicked", self.on_uninstall_clicked)
         self.uninstall_button.set_sensitive(False)
-        self.style_destructive_button(self.uninstall_button)
 
         self.aur_button = Gtk.Button(label=STRINGS.get('STRING_OPEN_IN_BROWSER', 'Im Browser öffnen'))
-        self.aur_button.set_name("aur-button")
         self.aur_button.connect("clicked", self.on_aur_clicked)
         self.aur_button.set_sensitive(False)
-        self.style_accent_button(self.aur_button)
 
         button_row.append(self.install_button)
         button_row.append(self.uninstall_button)
@@ -523,7 +557,7 @@ class MainWindow(Gtk.ApplicationWindow):
         action_box.append(button_row)
 
         details_box.append(details_header_box)
-        details_box.append(scrolled_details)
+        details_box.append(self.detail_stack)
         details_box.append(action_box)
 
         paned.set_start_child(scrolled_results)
@@ -540,179 +574,84 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self.set_child(main_box)
         self.selected_package = None
-        self.selected_package_full = None
-        
-        if DisclaimerDialog.should_show():
-            GLib.idle_add(self.show_disclaimer_dialog)
 
-    def show_disclaimer_dialog(self):
-        """Show the disclaimer dialog"""
-        dialog = DisclaimerDialog(self, self.accent_hex)
-        dialog.show()
+        if DisclaimerDialog.should_show():
+            GLib.idle_add(self._show_disclaimer)
+
+    # --- View switching ---
+
+    def _show_disclaimer(self):
+        DisclaimerDialog(self).show()
         return False
 
-    def get_accent_color_hex(self):
-        """Get GNOME accent color as hex"""
-        try:
-            settings = Gio.Settings.new("org.gnome.desktop.interface")
-            accent_name = settings.get_string("accent-color")
-            
-            accent_colors = {
-                "blue": "#1f71c6",
-                "red": "#d62828",
-                "green": "#26a269",
-                "yellow": "#f5c211",
-                "orange": "#ff8c00",
-                "purple": "#9b59b6",
-                "pink": "#d74590",
-                "cyan": "#0099cc",
-                "teal": "#17a697",
-                "gray": "#7a8793",
-                "slate": "#7a8793",
-            }
-            return accent_colors.get(accent_name, "#1f71c6")
-        except:
-            return "#1f71c6"
-    
-    def lighten_color(self, hex_color):
-        """Lighten a color by 15%"""
-        hex_color = hex_color.lstrip("#")
-        r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
-        r = min(255, int(r * 1.15))
-        g = min(255, int(g * 1.15))
-        b = min(255, int(b * 1.15))
-        return f"#{r:02x}{g:02x}{b:02x}"
+    def on_details_toggle(self, button):
+        if button.get_active():
+            self.terminal_toggle.set_active(False)
+            self.detail_stack.set_visible_child_name("details")
+        elif not self.terminal_toggle.get_active():
+            button.set_active(True)
 
-    def setup_base_css(self):
-        """Setup CSS for cards and elements"""
-        css_provider = Gtk.CssProvider()
-        css_data = f"""
-        * {{
-            font-family: system-ui;
-        }}
+    def on_terminal_toggle(self, button):
+        if button.get_active():
+            self.details_toggle.set_active(False)
+            self.detail_stack.set_visible_child_name("terminal")
+        elif not self.details_toggle.get_active():
+            button.set_active(True)
 
-        headerbar {{
-            background: transparent;
-            box-shadow: none;
-            border: none;
-        }}
+    # --- Embedded terminal ---
 
-        .card {{
-            border: 1px solid @borders;
-            border-radius: 12px;
-            background-color: @theme_base_color;
-        }}
+    def run_in_embedded_terminal(self, command, on_complete=None):
+        """Run a command in the embedded Vte terminal."""
+        self._terminal_running = True
+        self.terminal_toggle.set_active(True)
 
-        .title-2 {{
-            font-size: 16pt;
-            font-weight: bold;
-        }}
+        # Disconnect previous handler to prevent stale callbacks
+        if self._terminal_handler_id is not None:
+            self.terminal.disconnect(self._terminal_handler_id)
+            self._terminal_handler_id = None
 
-        button {{
-            border-radius: 8px;
-            transition: all 150ms ease-in-out;
-        }}
+        self.terminal.reset(True, True)
+        shell = os.environ.get('SHELL', '/bin/bash')
 
-        button:hover {{
-            transition: all 150ms ease-in-out;
-        }}
+        def on_child_exited(terminal, status):
+            self._terminal_running = False
+            exit_code = os.waitstatus_to_exitcode(status) if hasattr(os, 'waitstatus_to_exitcode') else (status >> 8)
+            if on_complete:
+                GLib.idle_add(on_complete, exit_code == 0)
 
-        .accent-colored {{
-            background: {self.accent_hex};
-            color: white;
-            border: none;
-            border-radius: 8px;
-            padding: 8px 16px;
-            font-weight: 500;
-        }}
+        self._terminal_handler_id = self.terminal.connect("child-exited", on_child_exited)
 
-        .accent-colored:hover {{
-            background: {self.lighten_color(self.accent_hex)};
-        }}
-
-        .destructive-styled {{
-            background: #c01c28;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            padding: 8px 16px;
-            font-weight: 500;
-        }}
-
-        .destructive-styled:hover {{
-            background: #e01b24;
-        }}
-
-        .destructive-styled:focus {{
-            outline: none;
-        }}
-
-        .flat {{
-            background-color: rgba(0, 0, 0, 0.05);
-            border-radius: 8px;
-        }}
-
-        .flat:hover {{
-            background-color: rgba(0, 0, 0, 0.1);
-        }}
-
-        listbox row {{
-            padding: 8px;
-        }}
-
-        listbox row:selected {{
-            background-color: @theme_selected_bg_color;
-        }}
-
-        scrolledwindow {{
-            border-radius: 12px;
-            border: none;
-            background: transparent;
-        }}
-
-        listbox {{
-            border: none;
-            background: transparent;
-        }}
-
-        entry {{
-            border-radius: 6px;
-        }}
-
-        paned {{
-            background: transparent;
-            border: none;
-            box-shadow: none;
-        }}
-
-        paned separator {{
-            background: transparent;
-            border: none;
-            margin: 0;
-            padding: 0;
-            box-shadow: none;
-            min-width: 0px;
-            min-height: 0px;
-        }}
-        """
-        css_provider.load_from_data(css_data)
-        Gtk.StyleContext.add_provider_for_display(
-            self.get_display(),
-            css_provider,
-            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        self.terminal.spawn_async(
+            Vte.PtyFlags.DEFAULT,
+            os.environ.get('HOME', '/'),
+            [shell, '-c', command],
+            None, GLib.SpawnFlags.DEFAULT,
+            None, None, -1, None, None
         )
 
-    def style_accent_button(self, button):
-        """Style button with accent color"""
-        button.remove_css_class("suggested-action")
-        button.add_css_class("accent-colored")
+    def _build_command(self, yay_args, operation):
+        """Build a shell command with success/error notification and proper exit code."""
+        success_msg = get_terminal_notification(success=True, operation=operation)
+        error_msg = get_terminal_notification(success=False, operation=operation)
+        return f'''{yay_args}
+STATUS=$?
+if [ $STATUS -eq 0 ]; then{success_msg}else{error_msg}fi
+exit $STATUS'''
 
-    def style_destructive_button(self, button):
-        """Style delete button in red"""
-        button.remove_css_class("destructive-action")
-        button.add_css_class("destructive-styled")
+    # --- CSS ---
 
-    def create_header(self):
+    def _setup_css(self):
+        """Minimal CSS — all widget styling uses native Adwaita."""
+        css = Gtk.CssProvider()
+        css.load_from_data("""
+            paned { background: transparent; border: none; box-shadow: none; }
+            paned separator { background: transparent; border: none; margin: 0;
+                padding: 0; box-shadow: none; min-width: 0px; min-height: 0px; }
+        """)
+        Gtk.StyleContext.add_provider_for_display(
+            self.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+    def _create_header(self):
         header_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
         header_box.set_margin_top(12)
         header_box.set_margin_bottom(12)
@@ -721,12 +660,11 @@ class MainWindow(Gtk.ApplicationWindow):
 
         title_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         title_box.set_halign(Gtk.Align.START)
-        
-        # Use icon name from system theme
-        icon_image = Gtk.Image.new_from_icon_name("gnome-aur-manager")
-        icon_image.set_pixel_size(48)
-        title_box.append(icon_image)
-        
+
+        icon = Gtk.Image.new_from_icon_name("gnome-aur-manager")
+        icon.set_pixel_size(48)
+        title_box.append(icon)
+
         title = Gtk.Label(label=STRINGS.get('STRING_APP_WINDOW_TITLE', 'Package Browser'))
         title.add_css_class("title-2")
         title.set_halign(Gtk.Align.START)
@@ -740,125 +678,77 @@ class MainWindow(Gtk.ApplicationWindow):
         header_box.append(subtitle)
         return header_box
 
+    # --- Search ---
+
     def on_search(self, widget):
-        query = self.search_entry.get_text()
-        if not query.strip():
+        query = self.search_entry.get_text().strip()
+        if not query:
             self.status_label.set_text(STRINGS.get('STRING_ENTER_SEARCH', 'Bitte einen Suchbegriff eingeben'))
             return
 
         self.status_label.set_text(STRINGS.get('STRING_SEARCHING', 'Suche läuft...'))
         self.results_list.remove_all()
         self.details_label.set_text(STRINGS.get('STRING_SELECT_PACKAGE', 'Wählen Sie ein Paket aus der Liste'))
-
         self.install_button.set_sensitive(False)
         self.uninstall_button.set_sensitive(False)
         self.aur_button.set_sensitive(False)
 
-        thread = threading.Thread(target=self.search_aur, args=(query,))
-        thread.daemon = True
-        thread.start()
+        threading.Thread(target=self._search_aur, args=(query,), daemon=True).start()
 
-    def search_aur(self, query):
+    def _search_aur(self, query):
         try:
-            result = subprocess.run(
-                ['yay', '-Ss', query],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-
-            packages = self.parse_yay_output(result.stdout)
-
-            GLib.idle_add(self.display_results, packages, query)
+            result = subprocess.run(['yay', '-Ss', query],
+                                    capture_output=True, text=True, timeout=10)
+            packages = self._parse_yay_output(result.stdout)
+            GLib.idle_add(self._display_results, packages, query)
         except subprocess.TimeoutExpired:
             GLib.idle_add(self.set_status, STRINGS.get('STRING_SEARCH_TIMEOUT', 'Suche hat zu lange gedauert'))
         except Exception as e:
-            GLib.idle_add(self.set_status, f"Fehler: {str(e)}")
+            GLib.idle_add(self.set_status, f"Fehler: {e}")
 
-    def parse_yay_output(self, output):
+    @staticmethod
+    def _parse_yay_output(output):
+        """Parse yay -Ss output into package list (handles all repo prefixes)."""
         packages = []
         lines = output.strip().split('\n')
-
         i = 0
         while i < len(lines):
             line = lines[i]
-
-            if line.startswith("aur/"):
+            # Match "repo/name version ..." format
+            if '/' in line and not line.startswith(' '):
                 parts = line.split()
                 if len(parts) >= 2:
-                    name = parts[0].replace("aur/", "")
-                    version = parts[1] if len(parts) > 1 else ""
-
+                    name = parts[0].split('/', 1)[1]
+                    version = parts[1]
                     description = ""
                     if i + 1 < len(lines) and lines[i + 1].startswith("    "):
                         description = lines[i + 1].strip()
                         i += 1
-
-                    packages.append({
-                        'name': name,
-                        'version': version,
-                        'description': description
-                    })
-            elif line.startswith("    ") and not line.strip().startswith("("):
-                stripped = line.strip()
-                parts = stripped.split()
-                
-                if len(parts) >= 2:
-                    potential_version = parts[1]
-                    is_version = any(c.isdigit() for c in potential_version) or potential_version.startswith('r')
-                    
-                    if is_version:
-                        name = parts[0]
-                        version = potential_version
-                        
-                        description = ""
-                        if i + 1 < len(lines) and lines[i + 1].startswith("    "):
-                            next_line = lines[i + 1].strip()
-                            next_parts = next_line.split()
-                            if len(next_parts) > 0:
-                                is_next_package = (len(next_parts) > 1 and 
-                                                 any(c.isdigit() for c in next_parts[1]))
-                                if not is_next_package:
-                                    description = next_line
-                                    i += 1
-                        
-                        packages.append({
-                            'name': name,
-                            'version': version,
-                            'description': description
-                        })
-
+                    packages.append({'name': name, 'version': version, 'description': description})
             i += 1
-
         return packages
-    
-    def sort_packages_by_relevance(self, packages, query):
-        """Sort packages by relevance to the query"""
-        query_lower = query.lower()
-        
-        def relevance_score(pkg):
-            name_lower = pkg['name'].lower()
-            
-            if name_lower == query_lower:
-                return (0, pkg['name'])
-            
-            if name_lower.startswith(query_lower):
-                return (1, pkg['name'])
-            
-            if query_lower in name_lower:
-                pos = name_lower.find(query_lower)
-                return (2 + pos/1000, pkg['name'])
-            
-            desc_lower = pkg['description'].lower()
-            if query_lower in desc_lower:
-                pos = desc_lower.find(query_lower)
-                return (100 + pos/1000, pkg['name'])
-            
-            return (1000, pkg['name'])
-        
-        return sorted(packages, key=relevance_score)
 
-    def display_results(self, packages, query):
+    @staticmethod
+    def _sort_by_relevance(packages, query):
+        """Sort packages by relevance to the search query."""
+        q = query.lower()
+
+        def score(pkg):
+            name = pkg['name'].lower()
+            if name == q:
+                return (0, pkg['name'])
+            if name.startswith(q):
+                return (1, pkg['name'])
+            if q in name:
+                return (2 + name.find(q) / 1000, pkg['name'])
+            desc = pkg['description'].lower()
+            if q in desc:
+                return (100 + desc.find(q) / 1000, pkg['name'])
+            return (1000, pkg['name'])
+
+        return sorted(packages, key=score)
+
+    def _display_results(self, packages, query):
         if not packages:
             row = Gtk.ListBoxRow()
             row.set_selectable(False)
@@ -869,30 +759,29 @@ class MainWindow(Gtk.ApplicationWindow):
             box.set_margin_end(20)
             box.set_halign(Gtk.Align.CENTER)
             box.set_valign(Gtk.Align.CENTER)
-            
+
             icon_label = Gtk.Label(label="")
             icon_label.add_css_class("title-1")
             box.append(icon_label)
-            
+
             message = Gtk.Label(label=STRINGS.get('STRING_NO_RESULTS', 'Keine Ergebnisse gefunden'))
             message.add_css_class("title-3")
             message.set_wrap(True)
             box.append(message)
-            
-            detail = Gtk.Label(label=STRINGS.get('STRING_NO_RESULTS_DETAIL', 'Keine Pakete gefunden. Versuche einen anderen Suchbegriff.'))
+
+            detail = Gtk.Label(label=STRINGS.get('STRING_NO_RESULTS_DETAIL',
+                                                  'Keine Pakete gefunden. Versuche einen anderen Suchbegriff.'))
             detail.set_wrap(True)
             detail.set_halign(Gtk.Align.CENTER)
             detail.add_css_class("dim-label")
             box.append(detail)
-            
+
             row.set_child(box)
             self.results_list.append(row)
             self.status_label.set_text(STRINGS.get('STRING_SEARCH_COMPLETE_EMPTY', 'Suche abgeschlossen - keine Ergebnisse'))
             return
 
-        sorted_packages = self.sort_packages_by_relevance(packages, query)
-
-        for pkg in sorted_packages:
+        for pkg in self._sort_by_relevance(packages, query):
             row = Gtk.ListBoxRow()
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
             box.set_margin_top(8)
@@ -917,6 +806,8 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self.status_label.set_text(_('STRING_SEARCH_RESULTS', count=len(packages)))
 
+    # --- Package details ---
+
     def on_package_selected(self, listbox, row):
         if row is None:
             self.selected_package = None
@@ -926,85 +817,60 @@ class MainWindow(Gtk.ApplicationWindow):
             return
 
         child = row.get_child()
-        labels = []
-        for widget in child:
-            if isinstance(widget, Gtk.Label):
-                labels.append(widget.get_text())
-
+        labels = [w.get_text() for w in child if isinstance(w, Gtk.Label)]
         if labels:
-            name_with_version = labels[0]
-            package_name = name_with_version.split(' ')[0]
+            self.selected_package = labels[0].split(' ')[0]
+            threading.Thread(target=self._fetch_details, args=(self.selected_package,), daemon=True).start()
 
-            self.selected_package = package_name
-
-            thread = threading.Thread(target=self.fetch_package_details, args=(package_name,))
-            thread.daemon = True
-            thread.start()
-
-    def fetch_package_details(self, package_name):
+    def _fetch_details(self, package_name):
         try:
-            result = subprocess.run(
-                ['yay', '-Si', package_name],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-
-            details = result.stdout
-            self.selected_package_full = details
-
-            installed = self.is_package_installed(package_name.split('/')[-1])
-
-            GLib.idle_add(self.display_package_details, details, installed, package_name)
+            result = subprocess.run(['yay', '-Si', package_name],
+                                    capture_output=True, text=True, timeout=10)
+            installed = self._is_installed(package_name.split('/')[-1])
+            GLib.idle_add(self._display_details, result.stdout, installed)
         except Exception as e:
-            GLib.idle_add(self.details_label.set_text, f"{STRINGS.get('STRING_ERROR_PREFIX', 'Fehler:')} {str(e)}")
+            GLib.idle_add(self.details_label.set_text,
+                         f"{STRINGS.get('STRING_ERROR_PREFIX', 'Fehler:')} {e}")
 
-    def is_package_installed(self, package_name):
+    @staticmethod
+    def _is_installed(package_name):
         try:
-            result = subprocess.run(
-                ['pacman', '-Q', package_name],
-                capture_output=True,
-                timeout=5
-            )
-            return result.returncode == 0
+            return subprocess.run(['pacman', '-Q', package_name],
+                                  capture_output=True, timeout=5).returncode == 0
         except:
             return False
 
-    def display_package_details(self, details, installed, package_name):
+    def _display_details(self, details, installed):
+        # Clear grid
         child = self.details_grid.get_first_child()
         while child:
             self.details_grid.remove(child)
             child = self.details_grid.get_first_child()
-        
-        formatted_data = self._parse_package_details(details)
-        
+
         row = 0
-        for key, value in formatted_data.items():
-            key_label = Gtk.Label(label=key)
+        for key, value in self._parse_details(details).items():
+            key_label = Gtk.Label()
+            key_label.set_markup(f"<b>{key}</b>")
             key_label.add_css_class("monospace")
             key_label.set_halign(Gtk.Align.END)
-            key_label.set_markup(f"<b>{key}</b>")
-            
+
             value_label = Gtk.Label(label=value)
             value_label.set_wrap(True)
             value_label.set_selectable(True)
             value_label.set_halign(Gtk.Align.START)
             value_label.set_hexpand(True)
-            
+
             self.details_grid.attach(key_label, 0, row, 1, 1)
             self.details_grid.attach(value_label, 1, row, 1, 1)
             row += 1
-        
-        self.update_button_state(installed)
+
+        self._update_button_state(installed)
         self.aur_button.set_sensitive(True)
 
-    def _parse_package_details(self, details):
-        """Parse package details"""
-        lines = details.split('\n')
-        
-        # yay outputs localized field names based on system language
-        # We need to match both English and German field names
-        field_mappings = {
+    @staticmethod
+    def _parse_details(details):
+        """Parse yay -Si output into display-friendly key-value pairs."""
+        field_map = {
             'Name': 'Name',
             'Version': STRINGS.get('STRING_DETAIL_VERSION', 'Version'),
             'Beschreibung': STRINGS.get('STRING_DETAIL_DESCRIPTION', 'Description'),
@@ -1015,30 +881,23 @@ class MainWindow(Gtk.ApplicationWindow):
             'Gruppen': STRINGS.get('STRING_DETAIL_GROUPS', 'Groups'),
             'Groups': STRINGS.get('STRING_DETAIL_GROUPS', 'Groups'),
         }
-        
-        # Values that indicate "none/empty" in different languages
-        empty_values = ['keine', 'nichts', 'none', 'nothing', 'aucun', 'aucune', 'ninguno', 'ninguna', 'nessuno', 'nessuna']
-        
-        formatted_data = {}
-        
-        for line in lines:
-            stripped = line.strip()
-            if not stripped:
-                continue
-                
-            for yay_key, display_key in field_mappings.items():
-                if line.startswith(yay_key):
-                    if ':' in line:
-                        value = line.split(':', 1)[1].strip()
-                        # Skip empty/none values
-                        if value.lower() not in empty_values:
-                            formatted_data[display_key] = value
-                    break
-        
-        return formatted_data
+        empty = {'keine', 'nichts', 'none', 'nothing', 'aucun', 'aucune',
+                 'ninguno', 'ninguna', 'nessuno', 'nessuna'}
 
-    def update_button_state(self, installed):
-        """Update button states based on installation status"""
+        result = {}
+        for line in details.split('\n'):
+            if not line.strip() or ':' not in line:
+                continue
+            for yay_key, display_key in field_map.items():
+                if line.startswith(yay_key):
+                    value = line.split(':', 1)[1].strip()
+                    if value.lower() not in empty:
+                        result[display_key] = value
+                    break
+        return result
+
+    def _update_button_state(self, installed):
+        """Update button states based on installation status."""
         if installed:
             self.status_button.set_text(STRINGS.get('STRING_ALREADY_INSTALLED', 'Paket ist bereits installiert'))
             self.status_button.add_css_class("success")
@@ -1053,224 +912,157 @@ class MainWindow(Gtk.ApplicationWindow):
             self.install_button.set_label(STRINGS.get('STRING_INSTALL_BUTTON', 'Installieren'))
             self.uninstall_button.set_sensitive(False)
 
+    # --- Package operations ---
+
     def on_install_clicked(self, button):
-        if not self.selected_package:
-            return
-
-        package_name = self.selected_package.split('/')[-1]
-        self.install_button.set_sensitive(False)
-        self.uninstall_button.set_sensitive(False)
-        self.status_label.set_text(_('STRING_INSTALLING_LOADING', package=package_name))
-
-        thread = threading.Thread(target=self.install_package, args=(package_name,))
-        thread.daemon = True
-        thread.start()
+        if self.selected_package:
+            pkg = self.selected_package.split('/')[-1]
+            self.install_button.set_sensitive(False)
+            self.uninstall_button.set_sensitive(False)
+            self._install_package(pkg)
 
     def on_uninstall_clicked(self, button):
-        if not self.selected_package:
-            return
-
-        package_name = self.selected_package.split('/')[-1]
-        self.install_button.set_sensitive(False)
-        self.uninstall_button.set_sensitive(False)
-        self.status_label.set_text(_('STRING_UNINSTALLING_LOADING', package=package_name))
-
-        thread = threading.Thread(target=self.uninstall_package, args=(package_name,))
-        thread.daemon = True
-        thread.start()
+        if self.selected_package:
+            pkg = self.selected_package.split('/')[-1]
+            self.install_button.set_sensitive(False)
+            self.uninstall_button.set_sensitive(False)
+            self._uninstall_package(pkg)
 
     def on_aur_clicked(self, button):
-        if not self.selected_package:
-            return
-
-        package_name = self.selected_package.split('/')[-1]
-        aur_url = f"https://aur.archlinux.org/packages/{package_name}"
-
-        try:
-            webbrowser.open(aur_url)
-        except:
-            self.status_label.set_text(STRINGS.get('STRING_BROWSER_ERROR', 'Fehler: Konnte Browser nicht öffnen'))
+        if self.selected_package:
+            pkg = self.selected_package.split('/')[-1]
+            try:
+                webbrowser.open(f"https://aur.archlinux.org/packages/{pkg}")
+            except:
+                self.status_label.set_text(
+                    STRINGS.get('STRING_BROWSER_ERROR', 'Fehler: Konnte Browser nicht öffnen'))
 
     def on_cleanup_clicked(self, button):
-        """Clear yay cache and build artifacts"""
-        def run_cleanup():
-            try:
-                GLib.idle_add(self.set_status, STRINGS.get("STRING_CLEARING_CACHE", "Leere Cache..."))
-                
-                import tempfile
-                import os
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
-                    script_path = f.name
-                    success_msg = get_terminal_notification(success=True, operation='cleanup')
-                    error_msg = get_terminal_notification(success=False, operation='cleanup')
-                    f.write(f'''#!/bin/bash
-yay -Sc
-CLEANUP_STATUS=$?
+        """Clear yay cache in embedded terminal."""
+        if self._terminal_running:
+            return
+        self.set_status(STRINGS.get("STRING_CLEARING_CACHE", "Leere Cache..."))
+        command = self._build_command('yay -Sc --noconfirm', 'cleanup')
 
-if [ $CLEANUP_STATUS -eq 0 ]; then{success_msg}else{error_msg}fi
-''')
-                
-                process = subprocess.Popen([
-                    'kgx', '--',
-                    'bash', script_path
-                ])
-                
-                process.wait()
-                
-                try:
-                    os.unlink(script_path)
-                except:
-                    pass
-                
-                GLib.idle_add(self.set_status, STRINGS.get("STRING_CACHE_CLEARED", "Cache geleert"))
-                    
-            except Exception as e:
-                GLib.idle_add(self.set_status, f"{STRINGS.get('STRING_ERROR_PREFIX', 'Fehler:')} {str(e)}")
-        
-        threading.Thread(target=run_cleanup, daemon=True).start()
+        def on_done(success):
+            if success:
+                self.set_status(STRINGS.get("STRING_CACHE_CLEARED", "Cache geleert"))
+            else:
+                self._show_retry_dialog(
+                    self._build_command('yay -Sc', 'cleanup'),
+                    lambda s: self.set_status(STRINGS.get("STRING_CACHE_CLEARED", "Cache geleert")))
+
+        self.run_in_embedded_terminal(command, on_complete=on_done)
 
     def on_update_aur_clicked(self, button):
-        """Update all installed AUR packages"""
-        def run_update():
-            try:
-                GLib.idle_add(self.set_status, STRINGS.get("STRING_UPDATING_AUR", "⬆Aktualisiere alle AUR Pakete..."))
-                
-                import tempfile
-                import os
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
-                    script_path = f.name
-                    success_msg = get_terminal_notification(success=True, operation='update')
-                    error_msg = get_terminal_notification(success=False, operation='update')
-                    f.write(f'''#!/bin/bash
-yay -Syua
-UPDATE_STATUS=$?
+        """Update all installed AUR packages in embedded terminal."""
+        if self._terminal_running:
+            return
+        self.set_status(STRINGS.get("STRING_UPDATING_AUR", "⬆Aktualisiere alle AUR Pakete..."))
+        command = self._build_command(
+            'yay -Syua --noconfirm --answerdiff None --answerclean None', 'update')
 
-if [ $UPDATE_STATUS -eq 0 ]; then{success_msg}else{error_msg}fi
-''')
-                
-                process = subprocess.Popen([
-                    'kgx', '--',
-                    'bash', script_path
-                ])
-                
-                process.wait()
-                
-                try:
-                    os.unlink(script_path)
-                except:
-                    pass
-                
-                GLib.idle_add(self.set_status, STRINGS.get("STRING_UPDATE_COMPLETE", "AUR Pakete aktualisiert"))
-                    
-            except Exception as e:
-                GLib.idle_add(self.set_status, f"{STRINGS.get('STRING_ERROR_PREFIX', 'Fehler:')} {str(e)}")
-        
-        threading.Thread(target=run_update, daemon=True).start()
+        def on_done(success):
+            if success:
+                self.set_status(STRINGS.get("STRING_UPDATE_COMPLETE", "AUR Pakete aktualisiert"))
+            else:
+                self._show_retry_dialog(
+                    self._build_command('yay -Syua', 'update'),
+                    lambda s: self.set_status(STRINGS.get("STRING_UPDATE_COMPLETE", "AUR Pakete aktualisiert")))
 
-    def install_package(self, package_name):
-        """Install package using yay in kgx terminal"""
-        def run_install():
-            try:
-                GLib.idle_add(self.set_status, _("STRING_INSTALLING", package=package_name))
-                
-                import tempfile
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
-                    script_path = f.name
-                    success_msg = get_terminal_notification(success=True, operation='install')
-                    error_msg = get_terminal_notification(success=False, operation='install')
-                    f.write(f'''#!/bin/bash
-yay -S {package_name}
-INSTALL_STATUS=$?
+        self.run_in_embedded_terminal(command, on_complete=on_done)
 
-if [ $INSTALL_STATUS -eq 0 ]; then{success_msg}else{error_msg}fi
-''')
-                
-                process = subprocess.Popen([
-                    'kgx', '--',
-                    'bash', script_path
-                ])
-                
-                process.wait()
-                
-                import os
-                try:
-                    os.unlink(script_path)
-                except:
-                    pass
-                
-                for attempt in range(120):
-                    time.sleep(1)
-                    if self.is_package_installed(package_name):
-                        GLib.idle_add(self.set_status, _("STRING_INSTALL_SUCCESS", package=package_name))
-                        GLib.idle_add(lambda: self.update_button_state(True))
-                        return
-                
-                installed = self.is_package_installed(package_name)
-                GLib.idle_add(lambda: self.update_button_state(installed))
-                if not installed:
-                    GLib.idle_add(self.set_status, STRINGS.get('STRING_INSTALL_ABORTED', '⚠ Installation abgebrochen oder fehlgeschlagen'))
-                    
-            except Exception as e:
-                GLib.idle_add(self.set_status, f"{STRINGS.get('STRING_ERROR_PREFIX', 'Fehler:')} {str(e)}")
-        
-        threading.Thread(target=run_install, daemon=True).start()
+    def _install_package(self, package_name):
+        """Install package (automatic, retry interactive on failure)."""
+        if self._terminal_running:
+            return
+        self.set_status(_("STRING_INSTALLING", package=package_name))
+        command = self._build_command(
+            f'yay -S --noconfirm --answerdiff None --answerclean None {package_name}', 'install')
 
-    def uninstall_package(self, package_name):
-        """Uninstall package using yay in kgx terminal"""
-        def run_uninstall():
-            try:
-                GLib.idle_add(self.set_status, _("STRING_UNINSTALLING", package=package_name))
-                
-                # Check if debug package exists and add it to removal list
-                packages_to_remove = [package_name]
-                debug_package = f"{package_name}-debug"
-                
-                if self.is_package_installed(debug_package):
-                    packages_to_remove.append(debug_package)
-                
-                remove_list = " ".join(packages_to_remove)
-                
-                import tempfile
-                import os
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
-                    script_path = f.name
-                    success_msg = get_terminal_notification(success=True, operation='uninstall')
-                    error_msg = get_terminal_notification(success=False, operation='uninstall')
-                    f.write(f'''#!/bin/bash
-yay -Rns {remove_list}
-UNINSTALL_STATUS=$?
+        def on_done(success):
+            installed = self._is_installed(package_name)
+            if installed:
+                self.set_status(_("STRING_INSTALL_SUCCESS", package=package_name))
+                self._update_button_state(True)
+            else:
+                interactive = self._build_command(f'yay -S {package_name}', 'install')
 
-if [ $UNINSTALL_STATUS -eq 0 ]; then{success_msg}else{error_msg}fi
-''')
-                
-                process = subprocess.Popen([
-                    'kgx', '--',
-                    'bash', script_path
-                ])
-                
-                process.wait()
-                
-                try:
-                    os.unlink(script_path)
-                except:
-                    pass
-                
-                for attempt in range(120):
-                    time.sleep(1)
-                    if not self.is_package_installed(package_name):
-                        GLib.idle_add(self.set_status, _("STRING_UNINSTALL_SUCCESS", package=package_name))
-                        GLib.idle_add(lambda: self.update_button_state(False))
-                        return
-                
-                installed = self.is_package_installed(package_name)
-                GLib.idle_add(lambda: self.update_button_state(installed))
-                if installed:
-                    GLib.idle_add(self.set_status, STRINGS.get('STRING_UNINSTALL_ABORTED', 'Deinstallation abgebrochen oder fehlgeschlagen'))
-                    
-            except Exception as e:
-                GLib.idle_add(self.set_status, f"{STRINGS.get('STRING_ERROR_PREFIX', 'Fehler:')} {str(e)}")
-        
-        threading.Thread(target=run_uninstall, daemon=True).start()
+                def on_retry(s):
+                    inst = self._is_installed(package_name)
+                    self.set_status(
+                        _("STRING_INSTALL_SUCCESS", package=package_name) if inst
+                        else STRINGS.get('STRING_INSTALL_ABORTED',
+                                         '⚠ Installation abgebrochen oder fehlgeschlagen'))
+                    self._update_button_state(inst)
+
+                self._show_retry_dialog(interactive, on_retry,
+                    cancel_callback=lambda: (
+                        self.set_status(STRINGS.get('STRING_INSTALL_ABORTED',
+                                                    '⚠ Installation abgebrochen oder fehlgeschlagen')),
+                        self._update_button_state(False)))
+
+        self.run_in_embedded_terminal(command, on_complete=on_done)
+
+    def _uninstall_package(self, package_name):
+        """Uninstall package (automatic, retry interactive on failure)."""
+        if self._terminal_running:
+            return
+        self.set_status(_("STRING_UNINSTALLING", package=package_name))
+
+        # Include debug package if installed
+        packages = [package_name]
+        debug_pkg = f"{package_name}-debug"
+        if self._is_installed(debug_pkg):
+            packages.append(debug_pkg)
+        remove_list = " ".join(packages)
+
+        command = self._build_command(f'yay -Rns --noconfirm {remove_list}', 'uninstall')
+
+        def on_done(success):
+            installed = self._is_installed(package_name)
+            if not installed:
+                self.set_status(_("STRING_UNINSTALL_SUCCESS", package=package_name))
+                self._update_button_state(False)
+            else:
+                interactive = self._build_command(f'yay -Rns {remove_list}', 'uninstall')
+
+                def on_retry(s):
+                    inst = self._is_installed(package_name)
+                    self.set_status(
+                        _("STRING_UNINSTALL_SUCCESS", package=package_name) if not inst
+                        else STRINGS.get('STRING_UNINSTALL_ABORTED',
+                                         'Deinstallation abgebrochen oder fehlgeschlagen'))
+                    self._update_button_state(inst)
+
+                self._show_retry_dialog(interactive, on_retry,
+                    cancel_callback=lambda: (
+                        self.set_status(STRINGS.get('STRING_UNINSTALL_ABORTED',
+                                                    'Deinstallation abgebrochen oder fehlgeschlagen')),
+                        self._update_button_state(True)))
+
+        self.run_in_embedded_terminal(command, on_complete=on_done)
+
+    def _show_retry_dialog(self, interactive_command, on_complete=None, cancel_callback=None):
+        """Show Adw.AlertDialog offering to retry the failed operation interactively."""
+        dialog = Adw.AlertDialog()
+        dialog.set_heading(STRINGS.get('STRING_RETRY_TITLE', 'Automatic installation failed'))
+        dialog.set_body(STRINGS.get('STRING_RETRY_MESSAGE',
+                                    'The automatic installation has failed. Would you like to retry in interactive mode?'))
+        dialog.add_response("cancel", STRINGS.get('STRING_RETRY_CANCEL', 'Cancel'))
+        dialog.add_response("retry", STRINGS.get('STRING_RETRY_BUTTON', 'Retry interactively'))
+        dialog.set_response_appearance("retry", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("retry")
+        dialog.set_close_response("cancel")
+
+        def on_response(d, response):
+            if response == "retry":
+                self.run_in_embedded_terminal(interactive_command, on_complete=on_complete)
+            elif cancel_callback:
+                cancel_callback()
+
+        dialog.connect("response", on_response)
+        dialog.present(self)
 
     def set_status(self, text):
         self.status_label.set_text(text)

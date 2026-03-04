@@ -66,10 +66,14 @@ meson install -C build
 
 - `gtk4` - GTK4 toolkit
 - `libadwaita` - GNOME's Adwaita library
+- `vte4` - VTE terminal emulator (GTK4) for embedded terminal
 - `python` - Python runtime
 - `python-gobject` - Python bindings for GObject
-- `git` - Required for AUR operations
-- `base-devel` - Build tools for compiling AUR packages
+- `yay` - AUR helper
+- `pacman` - Arch Linux package manager
+
+### Optional
+- `gnome-console` (kgx) - Only for AppStream PackageKit one-click setup in disclaimer
 
 ## Contributing
 
