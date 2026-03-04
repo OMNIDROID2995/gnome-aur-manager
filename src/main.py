@@ -1,7 +1,8 @@
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
-from gi.repository import Adw
+from gi.repository import Gtk, Adw, Gdk
+import os
 import sys
 import argparse
 
@@ -39,8 +40,15 @@ def main():
 
 
 def on_activate(app, MainWindowClass):
+    # Register local icon theme path (for running from source)
+    icon_theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
+    local_icons_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'icons')
+    if os.path.isdir(local_icons_dir):
+        icon_theme.add_search_path(local_icons_dir)
+
     window = MainWindowClass()
     window.set_application(app)
+    window.set_icon_name('gnome-aur-manager')
     window.present()
 
 

@@ -1,10 +1,10 @@
-# Maintainer: Your Name <your.email@example.com>
+# Maintainer: OMNIDROID2995 <basti29kuehn@googlemail.com>
 pkgname=gnome-aur-manager
 pkgver=2.0.0
 pkgrel=1
 pkgdesc="A modern GNOME application to browse and manage AUR packages with GTK4 and Libadwaita"
 arch=('any')
-url="https://github.com/yourusername/gnome-aur-manager"
+url="https://github.com/OMNIDROID2995/gnome-aur-manager"
 license=('GPL-3.0-or-later')
 depends=(
     'python>=3.10'
@@ -24,11 +24,12 @@ provides=("${pkgname}")
 conflicts=()
 backup=()
 
-source=("${pkgname}-${pkgver}.tar.gz")
-sha256sums=('4a8a2d48e2d032868059d2b588b03b7640eee77d4d95420b1f9c15f195e7b387')
+install=${pkgname}.install
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/OMNIDROID2995/${pkgname}/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('SKIP')
 
 package() {
-    cd "${srcdir}/${pkgname}"
+    cd "${srcdir}/${pkgname}-${pkgver}"
     
     # Install Python source files
     install -dm755 "${pkgdir}/usr/lib/${pkgname}"
@@ -38,6 +39,9 @@ package() {
     install -dm755 "${pkgdir}/usr/lib/${pkgname}/strings"
     install -Dm644 src/strings/*.txt "${pkgdir}/usr/lib/${pkgname}/strings/"
     
+    # Install icon to system icon theme
+    install -Dm644 src/icon.png "${pkgdir}/usr/share/icons/hicolor/256x256/apps/${pkgname}.png"
+
     # Install disclaimer files (all languages)
     install -Dm644 src/disclaimer-*.txt "${pkgdir}/usr/lib/${pkgname}/"
     
